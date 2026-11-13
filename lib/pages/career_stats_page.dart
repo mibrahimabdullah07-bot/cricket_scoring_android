@@ -76,6 +76,7 @@ Map<String, CareerLine> buildCareerStats(List<CricketMatch> matches) {
       if (!isMatchComplete(m)) continue;
       final counted = <String>{};
       for (var i = 0; i < m.innings.length; i++) {
+        if (m.innings[i].isSuperOver) continue; // Super Overs are not career figures
         final st = computeInnings(m, i);
         if (st.needsOpeners) continue;
 

@@ -49,7 +49,11 @@ class _ScorecardPageState extends State<ScorecardPage> {
                           fontSize: 18, fontWeight: FontWeight.w800),
                     ),
                     Text(
-                      i == 0 ? '1st innings' : '2nd innings',
+                      i == 0
+                          ? '1st innings'
+                          : (i == 1
+                              ? '2nd innings'
+                              : 'Super Over ${(i - 2) ~/ 2 + 1}, ${(i - 2).isEven ? 'first' : 'second'} innings'),
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ],
@@ -65,6 +69,17 @@ class _ScorecardPageState extends State<ScorecardPage> {
 
   Widget _content() {
     if (_tab == 0) return _ProgressChart(match: match);
+    if (_tab == 3) {
+      return Column(
+        children: [
+          for (var i = 2; i < match.innings.length; i++)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: _inningsTab(i),
+            ),
+        ],
+      );
+    }
     return _inningsTab(_tab - 1);
   }
 
@@ -124,6 +139,8 @@ class _ScorecardPageState extends State<ScorecardPage> {
                   label: const Text('2nd innings'),
                   enabled: match.innings.length >= 2,
                 ),
+                if (match.innings.length > 2)
+                  const ButtonSegment<int>(value: 3, label: Text('Super Over')),
               ],
               selected: {_tab},
               onSelectionChanged: (s) => setState(() => _tab = s.first),
@@ -238,7 +255,7 @@ class _MatchHeader extends StatelessWidget {
         var margin = result.text;
         if (margin.startsWith(name)) margin = margin.substring(name.length).trim();
         if (margin.startsWith('won by ')) margin = margin.substring(7);
-        sub = 'By $margin';
+        sub = result.detail ?? 'By $margin';
         color = const Color(0xFF69F0AE);
       }
     } else {

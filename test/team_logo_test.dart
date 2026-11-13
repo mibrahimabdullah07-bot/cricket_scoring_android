@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import '../lib/team_logo.dart';
+import 'package:cricket_scoring_app/team_logo.dart';
 
 void main() {
   test('names that look like random typing get the general logo', () {

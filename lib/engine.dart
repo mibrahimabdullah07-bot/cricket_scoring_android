@@ -189,17 +189,26 @@ InningsState computeInnings(CricketMatch m, int index) {
   final inn = m.innings[index];
   final bat = m.sides[inn.battingIndex];
   final bowl = m.sides[1 - inn.battingIndex];
-  final int? target = index == 1 ? computeInnings(m, 0).runs + 1 : null;
+  // Super Over: one over and two wickets. The innings of a pair are 2+3, 4+5...
+  // and the second innings of a pair chases the first.
+  final oversLimit = inn.isSuperOver ? 1 : m.oversLimit;
+  final naturalWickets = bat.players.length - 1;
+  final maxWickets =
+      (inn.isSuperOver && naturalWickets > 2) ? 2 : naturalWickets;
+  final secondOfPair = inn.isSuperOver && (index - 2).isOdd;
+  final int? target = index == 1
+      ? computeInnings(m, 0).runs + 1
+      : (secondOfPair ? computeInnings(m, index - 1).runs + 1 : null);
 
   final st = InningsState(
-    maxWickets: bat.players.length - 1,
-    oversLimit: m.oversLimit,
+    maxWickets: maxWickets,
+    oversLimit: oversLimit,
     target: target,
   );
   st.battingTeamName = bat.name;
   st.bowlingTeamName = bowl.name;
   st.maxOversPerBowler =
-      calcMaxOversPerBowler(m.oversLimit, bowl.players.length);
+      calcMaxOversPerBowler(oversLimit, bowl.players.length);
 
   BatterLine lineFor(String id) =>
       st.batters.putIfAbsent(id, () => BatterLine(id, bat.nameOf(id)));
@@ -321,8 +330,8 @@ InningsState computeInnings(CricketMatch m, int index) {
     st.completeReason = 'Target reached';
   } else if (st.wickets >= st.maxWickets) {
     st.complete = true;
-    st.completeReason = 'All out';
-  } else if (st.legalBalls >= m.oversLimit * 6) {
+    st.completeReason = inn.isSuperOver ? 'Two wickets lost' : 'All out';
+  } else if (st.legalBalls >= oversLimit * 6) {
     st.complete = true;
     st.completeReason = 'Overs completed';
   } else if (inn.endedManually) {
@@ -639,18 +648,59 @@ Delivery buildDelivery(
 // ---------------------------------------------------------------------------
 
 class MatchResult {
-  const MatchResult(this.text, this.winnerIndex);
+  const MatchResult(this.text, this.winnerIndex, [this.detail]);
 
   final String text;
 
   /// Index into CricketMatch.sides, or null for a tie.
   final int? winnerIndex;
+
+  /// Extra line for the header, e.g. the Super Over scores.
+  final String? detail;
 }
 
-bool isMatchComplete(CricketMatch m) =>
-    m.innings.length == 2 &&
-    computeInnings(m, 0).complete &&
-    computeInnings(m, 1).complete;
+/// A match is complete when the two innings are decided, or when a tie is
+/// settled by a Super Over (or the scorer chose to keep the tie).
+bool isMatchComplete(CricketMatch m) {
+  if (m.innings.length < 2) return false;
+  final a = computeInnings(m, 0);
+  final b = computeInnings(m, 1);
+  if (!a.complete || !b.complete) return false;
+  if (a.runs != b.runs) return true;
+  if (m.tieAccepted) return true;
+  // Level: only a finished Super Over pair with a winner settles it.
+  final n = m.innings.length;
+  if (n < 4 || n.isOdd) return false;
+  final x = computeInnings(m, n - 2);
+  final y = computeInnings(m, n - 1);
+  return x.complete && y.complete && x.runs != y.runs;
+}
+
+/// True when the match is level and the scorer has to decide: play a
+/// (further) Super Over, or keep the tie.
+bool tieNeedsDecision(CricketMatch m) {
+  if (m.tieAccepted || m.innings.length < 2) return false;
+  final a = computeInnings(m, 0);
+  final b = computeInnings(m, 1);
+  if (!a.complete || !b.complete || a.runs != b.runs) return false;
+  final n = m.innings.length;
+  if (n == 2) return true;
+  if (n < 4 || n.isOdd) return false;
+  final x = computeInnings(m, n - 2);
+  final y = computeInnings(m, n - 1);
+  return x.complete && y.complete && x.runs == y.runs;
+}
+
+/// The next Super Over innings. The team that batted second before (in the
+/// match, or in the last Super Over) bats first; the other team then chases.
+Innings newSuperOverInnings(CricketMatch m) {
+  final lastBatting = m.innings.last.battingIndex;
+  final first = m.innings.length.isEven;
+  return Innings(
+    battingIndex: first ? lastBatting : 1 - lastBatting,
+    isSuperOver: true,
+  );
+}
 
 MatchResult? matchResult(CricketMatch m) {
   if (!isMatchComplete(m)) return null;
@@ -671,6 +721,25 @@ MatchResult? matchResult(CricketMatch m) {
       '${first.name} won by $diff run${diff == 1 ? '' : 's'}',
       m.innings[0].battingIndex,
     );
+  }
+  // level after the normal innings: the last Super Over decides
+  final n = m.innings.length;
+  if (!m.tieAccepted && n >= 4) {
+    final x = computeInnings(m, n - 2);
+    final y = computeInnings(m, n - 1);
+    if (x.runs != y.runs) {
+      final yWon = y.runs > x.runs;
+      final winnerInnings = yWon ? m.innings[n - 1] : m.innings[n - 2];
+      final w = yWon ? y : x;
+      final l = yWon ? x : y;
+      final number = (n - 2) ~/ 2;
+      return MatchResult(
+        '${m.battingSide(winnerInnings).name} won the Super Over',
+        winnerInnings.battingIndex,
+        'Match tied, then ${number > 1 ? 'Super Over $number' : 'the Super Over'}: '
+            '${w.runs}/${w.wickets} to ${l.runs}/${l.wickets}',
+      );
+    }
   }
   return const MatchResult('Match tied', null);
 }
@@ -697,7 +766,7 @@ String scorecardText(CricketMatch m) {
       continue;
     }
     b.writeln(
-        '${i + 1}. ${st.battingTeamName.toUpperCase()}: ${st.runs}/${st.wickets} (${oversText(st.legalBalls)} overs)');
+        '${i < 2 ? '${i + 1}.' : 'SUPER OVER ${(i - 2) ~/ 2 + 1}.'} ${st.battingTeamName.toUpperCase()}: ${st.runs}/${st.wickets} (${oversText(st.legalBalls)} overs)');
     if (st.target != null) b.writeln('Target: ${st.target}');
 
     b.writeln();
@@ -749,7 +818,7 @@ String scoreSummaryText(CricketMatch m) {
     final st = computeInnings(m, i);
     if (st.needsOpeners) continue;
     b.writeln(
-        '${st.battingTeamName}: ${st.runs}/${st.wickets} (${oversText(st.legalBalls)} overs)');
+        '${st.battingTeamName}${i >= 2 ? ' (Super Over)' : ''}: ${st.runs}/${st.wickets} (${oversText(st.legalBalls)} overs)');
     for (final bt in st.batters.values) {
       final cur = bestBat;
       if (cur == null ||

@@ -294,6 +294,7 @@ class Innings {
     this.openNonStrikerId,
     this.nextBowlerId,
     this.endedManually = false,
+    this.isSuperOver = false,
     List<Delivery>? deliveries,
   }) : deliveries = deliveries ?? <Delivery>[];
 
@@ -308,6 +309,9 @@ class Innings {
   String? nextBowlerId;
 
   bool endedManually;
+
+  /// A Super Over innings (one over, two wickets) that decides a tied match.
+  final bool isSuperOver;
   final List<Delivery> deliveries;
 
   Map<String, dynamic> toJson() => {
@@ -316,6 +320,7 @@ class Innings {
         'openNonStrikerId': openNonStrikerId,
         'nextBowlerId': nextBowlerId,
         'endedManually': endedManually,
+        'isSuperOver': isSuperOver,
         'deliveries': deliveries.map((d) => d.toJson()).toList(),
       };
 
@@ -325,6 +330,7 @@ class Innings {
         openNonStrikerId: j['openNonStrikerId'] as String?,
         nextBowlerId: j['nextBowlerId'] as String?,
         endedManually: (j['endedManually'] as bool?) ?? false,
+        isSuperOver: (j['isSuperOver'] as bool?) ?? false,
         deliveries: (j['deliveries'] as List)
             .map((e) => Delivery.fromJson(e as Map<String, dynamic>))
             .toList(),
@@ -340,6 +346,7 @@ class CricketMatch {
     required this.oversLimit,
     required this.sides,
     required this.innings,
+    this.tieAccepted = false,
   });
 
   final String id;
@@ -349,6 +356,9 @@ class CricketMatch {
   final int oversLimit;
   final List<MatchSide> sides;
   final List<Innings> innings;
+
+  /// The scorer chose to keep a tied match as a tie (no Super Over).
+  bool tieAccepted;
 
   MatchSide battingSide(Innings i) => sides[i.battingIndex];
   MatchSide bowlingSide(Innings i) => sides[1 - i.battingIndex];
@@ -361,6 +371,7 @@ class CricketMatch {
         'oversLimit': oversLimit,
         'sides': sides.map((s) => s.toJson()).toList(),
         'innings': innings.map((i) => i.toJson()).toList(),
+        'tieAccepted': tieAccepted,
       };
 
   factory CricketMatch.fromJson(Map<String, dynamic> j) => CricketMatch(
@@ -375,5 +386,6 @@ class CricketMatch {
         innings: (j['innings'] as List)
             .map((e) => Innings.fromJson(e as Map<String, dynamic>))
             .toList(),
+        tieAccepted: (j['tieAccepted'] as bool?) ?? false,
       );
 }

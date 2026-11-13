@@ -47,7 +47,7 @@ class _ScoringPageState extends State<ScoringPage> {
     _st = computeInnings(match, _idx);
     if (!_st.complete) {
       if (_idx == 0) _firstDoneShown = false;
-      if (_idx == 1) _resultShown = false;
+      if (_idx >= 1) _resultShown = false;
     }
   }
 
@@ -74,14 +74,108 @@ class _ScoringPageState extends State<ScoringPage> {
     } else if (st.needsBowler) {
       await _pickBowler();
     } else if (st.complete) {
-      if (_idx == 0 && !_firstDoneShown) {
+      await _afterInnings();
+    }
+  }
+
+  /// Decides what follows the innings that has just finished: the second
+  /// innings, a Super Over for a tie, or the end of the match.
+  Future<void> _afterInnings() async {
+    if (_idx == 0) {
+      if (!_firstDoneShown) {
         _firstDoneShown = true;
         await _firstInningsDone();
-      } else if (_idx == 1 && !_resultShown) {
-        _resultShown = true;
-        await _matchDone();
       }
+      return;
     }
+    if (_resultShown) return;
+    if (isMatchComplete(match)) {
+      _resultShown = true;
+      await _matchDone();
+    } else if (tieNeedsDecision(match)) {
+      _resultShown = true;
+      await _tieDialog();
+    } else if (_idx >= 2 &&
+        (_idx - 2).isEven &&
+        match.innings.length == _idx + 1) {
+      _resultShown = true;
+      await _superOverFirstDone();
+    }
+  }
+
+  Future<void> _tieDialog() async {
+    _busy = true;
+    final again = match.innings.length >= 4;
+    final start = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(again ? 'Super Over tied!' : 'Match tied!'),
+        content: Text(again
+            ? 'Both teams scored the same in the Super Over. Play another '
+                'Super Over to find a winner, or keep the match as a tie.'
+            : 'Both teams scored ${_st.runs}. A Super Over decides a tied '
+                'match: each team bats one over and loses at most two '
+                'wickets. Play it, or keep the match as a tie.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Keep as tie'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Play Super Over'),
+          ),
+        ],
+      ),
+    );
+    _busy = false;
+    if (!mounted) return;
+    if (start == true) {
+      await _startSuperOver();
+    } else if (start == false) {
+      await _keepTie();
+    }
+  }
+
+  Future<void> _keepTie() async {
+    match.tieAccepted = true;
+    _resultShown = false;
+    await _commit();
+  }
+
+  Future<void> _superOverFirstDone() async {
+    _busy = true;
+    final start = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Super Over: first innings complete'),
+        content: Text(
+          '${_st.battingTeamName} ${_st.runs}/${_st.wickets} '
+          '(${oversText(_st.legalBalls)} overs) - ${_st.completeReason}.\n\n'
+          'Target for ${_st.bowlingTeamName}: ${_st.runs + 1}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Later'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Start second innings'),
+          ),
+        ],
+      ),
+    );
+    _busy = false;
+    if (start == true && mounted) await _startSuperOver();
+  }
+
+  /// Adds the next Super Over innings (first or second of the pair).
+  Future<void> _startSuperOver() async {
+    match.innings.add(newSuperOverInnings(match));
+    _mode = DeliveryKind.normal;
+    _nbSource = RunSource.bat;
+    await _commit();
   }
 
   Future<void> _openersDialog() async {
@@ -334,10 +428,13 @@ class _ScoringPageState extends State<ScoringPage> {
       _inn.endedManually = false;
       await _commit();
     } else if (v == 'reopen') {
-      // Only offered while the 2nd innings has no balls yet.
+      // Only offered while the newest innings has no balls yet.
       match.innings.removeLast();
+      match.tieAccepted = false;
       _firstDoneShown = true;
       await _commit();
+    } else if (v == 'keeptie') {
+      await _keepTie();
     }
   }
 
@@ -450,12 +547,31 @@ class _ScoringPageState extends State<ScoringPage> {
           onPressed: _startSecond,
         );
       }
-      if (_idx == 1) {
+      if (isMatchComplete(match)) {
         return _banner(
           icon: const Icon(Icons.emoji_events),
           text: matchResult(match)?.text ?? 'Innings complete',
           button: 'View scorecard',
           onPressed: _openScorecard,
+        );
+      }
+      if (tieNeedsDecision(match)) {
+        return _banner(
+          icon: const Icon(Icons.balance),
+          text: match.innings.length >= 4
+              ? 'Super Over tied! Play another Super Over to find a winner.'
+              : 'Match tied! A Super Over decides it.',
+          button: 'Play Super Over',
+          onPressed: _startSuperOver,
+        );
+      }
+      if (_idx >= 2 && (_idx - 2).isEven && match.innings.length == _idx + 1) {
+        return _banner(
+          icon: const Icon(Icons.flag),
+          text: 'Super Over innings complete (${st.completeReason}). '
+              'Target for ${st.bowlingTeamName}: ${st.runs + 1}.',
+          button: 'Start second innings',
+          onPressed: _startSuperOver,
         );
       }
     }
@@ -466,7 +582,9 @@ class _ScoringPageState extends State<ScoringPage> {
     final cs = Theme.of(context).colorScheme;
     final lines = <Widget>[
       Text(
-        'Innings ${_idx + 1} - ${match.oversLimit} overs',
+        _inn.isSuperOver
+            ? 'Super Over ${(_idx - 2) ~/ 2 + 1} - ${(_idx - 2).isEven ? 'first' : 'second'} innings (1 over, 2 wickets)'
+            : 'Innings ${_idx + 1} - ${match.oversLimit} overs',
         style: TextStyle(color: cs.onPrimary),
       ),
       Text(
@@ -486,7 +604,7 @@ class _ScoringPageState extends State<ScoringPage> {
         ),
       ),
       Text(
-        'Overs ${oversText(st.legalBalls)} / ${match.oversLimit}'
+        'Overs ${oversText(st.legalBalls)} / ${st.oversLimit}'
         '   Current run rate ${st.runRate.toStringAsFixed(2)}',
         style: TextStyle(color: cs.onPrimary),
       ),
@@ -785,9 +903,12 @@ class _ScoringPageState extends State<ScoringPage> {
                 const PopupMenuItem(value: 'end', child: Text('End innings now')),
               if (_inn.endedManually)
                 const PopupMenuItem(value: 'resume', child: Text('Resume innings')),
-              if (_idx == 1 && _inn.deliveries.isEmpty)
+              if (_idx >= 1 && _inn.deliveries.isEmpty)
                 const PopupMenuItem(
-                    value: 'reopen', child: Text('Back to first innings')),
+                    value: 'reopen', child: Text('Back to previous innings')),
+              if (tieNeedsDecision(match))
+                const PopupMenuItem(
+                    value: 'keeptie', child: Text('Keep match as a tie')),
             ],
           ),
         ],

@@ -46,7 +46,7 @@ UI (pages/*)  ->  engine.dart (pure Dart rules)  ->  models.dart (data)  ->  sto
 | Save completed match and reopen summary | `AppStore.upsertMatch`, Matches tab |
 | Works without Internet | nothing in the app uses the network |
 
-## Scoring rules implemented (document for the report)
+## Scoring rules implemented 
 | Event | Team runs | Legal ball | Batter | Bowler |
 |---|---|---|---|---|
 | Normal 0-6 | runs | yes | runs + ball faced | runs charged, ball counted |

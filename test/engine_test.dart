@@ -2,8 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import '../lib/engine.dart';
-import '../lib/models.dart';
+import 'package:cricket_scoring_app/engine.dart';
+import 'package:cricket_scoring_app/models.dart';
 
 /// Two sides (A1..An and B1..Bn). Team A bats first; A1 & A2 open, B1 bowls.
 CricketMatch newMatch({int overs = 2, int players = 4}) {
@@ -238,6 +238,7 @@ void main() {
     for (var i = 0; i < 5; i++) {
       play(m, inningsIndex: 1);
     }
+    m.tieAccepted = true; // keep the tie (no Super Over)
     expect(matchResult(m)!.text, 'Match tied');
   });
 
@@ -374,5 +375,54 @@ void main() {
     expect(steps[1].deliveries.length, 2); // the wide and the four
     expect(steps[1].totalRuns, 1 + 1 + 4);
     expect(steps[1].totalExtras, 1);
+  });
+
+  test('a tied match goes to a Super Over and the Super Over decides it', () {
+    final m = firstInningsSix();
+    play(m, inningsIndex: 1, runs: 6);
+    for (var i = 0; i < 5; i++) {
+      play(m, inningsIndex: 1);
+    }
+    expect(isMatchComplete(m), isFalse); // level: not finished yet
+    expect(tieNeedsDecision(m), isTrue);
+
+    // Super Over 1: Team B (batted second) bats first and scores 6
+    m.innings.add(newSuperOverInnings(m));
+    expect(m.innings[2].isSuperOver, isTrue);
+    expect(m.innings[2].battingIndex, 1);
+    m.innings[2]
+      ..openStrikerId = 'B1'
+      ..openNonStrikerId = 'B2'
+      ..nextBowlerId = 'A1';
+    expect(computeInnings(m, 2).maxWickets, 2); // two wickets in a Super Over
+    play(m, inningsIndex: 2, runs: 6);
+    for (var i = 0; i < 5; i++) {
+      play(m, inningsIndex: 2);
+    }
+    expect(computeInnings(m, 2).complete, isTrue); // one over only
+    expect(computeInnings(m, 2).runs, 6);
+
+    // Team A chases 7 in the Super Over and gets there
+    m.innings.add(newSuperOverInnings(m));
+    expect(m.innings[3].battingIndex, 0);
+    m.innings[3]
+      ..openStrikerId = 'A1'
+      ..openNonStrikerId = 'A2'
+      ..nextBowlerId = 'B1';
+    expect(computeInnings(m, 3).target, 7);
+    play(m, inningsIndex: 3, runs: 6);
+    play(m, inningsIndex: 3, runs: 1);
+    expect(isMatchComplete(m), isTrue);
+    final result = matchResult(m)!;
+    expect(result.text, 'Team A won the Super Over');
+    expect(result.winnerIndex, 0);
+    expect(tieNeedsDecision(m), isFalse);
+
+    // the Super Over survives saving
+    final copy = CricketMatch.fromJson(
+      jsonDecode(jsonEncode(m.toJson())) as Map<String, dynamic>,
+    );
+    expect(copy.innings[3].isSuperOver, isTrue);
+    expect(matchResult(copy)!.text, 'Team A won the Super Over');
   });
 }

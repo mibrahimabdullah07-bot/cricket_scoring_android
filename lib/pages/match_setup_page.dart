@@ -456,11 +456,24 @@ class _MatchSetupPageState extends State<MatchSetupPage>
   // Step 4: toss (coin flip) and decision
   // ------------------------------------------------------------------
 
+  /// One side of the coin: just the word HEADS or TAILS, written in an
+  /// embossed gold style inside a beaded rim.
   Widget _coinFace(int side) {
-    // side 0 = heads, side 1 = tails
-    final team = side == 0 ? _headsTeam : 1 - _headsTeam;
-    final name = (team == 0 ? _teamA?.name : _teamB?.name) ?? '?';
-    final letter = name.isEmpty ? '?' : name.substring(0, 1).toUpperCase();
+    final word = side == 0 ? 'HEADS' : 'TAILS';
+    const dark = Color(0xFF6D4C00);
+    Widget label(Color color, Offset shift) => Transform.translate(
+          offset: shift,
+          child: Text(
+            word,
+            style: TextStyle(
+              fontFamily: 'serif',
+              fontSize: 30,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 2,
+              color: color,
+            ),
+          ),
+        );
     return Container(
       width: 150,
       height: 150,
@@ -475,25 +488,30 @@ class _MatchSetupPageState extends State<MatchSetupPage>
           BoxShadow(color: Color(0x55000000), blurRadius: 14, offset: Offset(0, 6)),
         ],
       ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+      child: Stack(
+        alignment: Alignment.center,
         children: [
-          Text(
-            letter,
-            style: const TextStyle(
-              fontSize: 64,
-              fontWeight: FontWeight.w900,
-              color: Color(0xFF6D4C00),
-            ),
-          ),
-          Text(
-            side == 0 ? 'HEADS' : 'TAILS',
-            style: const TextStyle(
-              fontSize: 13,
-              letterSpacing: 3,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF6D4C00),
-            ),
+          CustomPaint(size: const Size(138, 138), painter: _CoinRimPainter()),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.star, size: 16, color: dark),
+              const SizedBox(height: 4),
+              SizedBox(
+                width: 100,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Stack(
+                    children: [
+                      label(const Color(0xCCFFF3B0), const Offset(-1.2, -1.2)),
+                      label(dark, Offset.zero),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Icon(Icons.star, size: 16, color: dark),
+            ],
           ),
         ],
       ),
@@ -841,4 +859,33 @@ class _MatchSetupPageState extends State<MatchSetupPage>
       ),
     );
   }
+}
+
+/// Beaded edge and an inner ring for the coin.
+class _CoinRimPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = Offset(size.width / 2, size.height / 2);
+    final r = size.width / 2;
+    final bead = Paint()..color = const Color(0xFF8D6E08);
+    for (var i = 0; i < 44; i++) {
+      final a = i * 2 * math.pi / 44;
+      canvas.drawCircle(
+        c + Offset(math.cos(a), math.sin(a)) * (r * 0.9),
+        r * 0.02,
+        bead,
+      );
+    }
+    canvas.drawCircle(
+      c,
+      r * 0.8,
+      Paint()
+        ..color = const Color(0x886D4C00)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _CoinRimPainter old) => false;
 }

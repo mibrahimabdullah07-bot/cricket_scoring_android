@@ -172,8 +172,8 @@ class _MatchCard extends StatelessWidget {
     for (var i = 0; i < match.innings.length; i++) {
       final st = computeInnings(match, i);
       scores.add(st.needsOpeners
-          ? '${st.battingTeamName}: waiting to start'
-          : '${st.battingTeamName} ${st.runs}/${st.wickets} (${oversText(st.legalBalls)})');
+          ? '${st.battingTeamName}${i >= 2 ? ' (Super Over)' : ''}: waiting to start'
+          : '${st.battingTeamName}${i >= 2 ? ' (Super Over)' : ''} ${st.runs}/${st.wickets} (${oversText(st.legalBalls)})');
     }
     final theme = Theme.of(context);
     return Card(
