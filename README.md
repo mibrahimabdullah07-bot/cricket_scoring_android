@@ -10,7 +10,7 @@ result).
 2. Delete the default `test/widget_test.dart` (it refers to the old counter app).
 3. `flutter pub get` -> `flutter analyze` -> `flutter test` -> `flutter run` (phone connected, USB debugging on).
 
-## Architecture (what to explain in the viva)
+## Architecture 
 ```
 UI (pages/*)  ->  engine.dart (pure Dart rules)  ->  models.dart (data)  ->  store.dart (SharedPreferences JSON on the phone)
 ```
@@ -76,7 +76,7 @@ Create teams (>= 3 players each) -> New match -> T10 -> Start. Choose openers + 
 6. Finish/End innings -> "Start second innings" -> target is shown -> chase it -> result dialog.
 7. Close the app completely, reopen: saved teams and the match are still there.
 
-## Live-modification ideas (viva)
+## Live-modification ideas 
 * Change minimum team size: `kMinPlayersPerTeam` in `models.dart`.
 * Change preset overs: `match_setup_page.dart` (`T10/T20/ODI`).
 * Change which dismissals credit the bowler: `WicketTypeX.creditsBowler`.
